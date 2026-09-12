@@ -1,0 +1,14 @@
+{
+  "name": "@sintjut/agenda-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "worker": "node src/worker.js",
+    "check": "node --check src/server.js && node --check src/worker.js && node --check src/shared.js"
+  },
+  "dependencies": {
+    "mariadb": "^3.4.5"
+  }
+}

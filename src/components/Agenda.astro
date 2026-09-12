@@ -1,0 +1,120 @@
+---
+const periods = [
+  { value: 'morning', label: 'Ochtend', start: '09:00', end: '12:00' },
+  { value: 'afternoon', label: 'Middag', start: '13:00', end: '17:00' },
+  { value: 'evening', label: 'Avond', start: '19:00', end: '23:00' }
+];
+---
+<section id="agenda" class="agenda live-agenda">
+  <div class="section-head">
+    <div><div class="eyebrow">ER IS ALTIJD IETS DICHTBIJ</div><h2>Op de dorpsagenda</h2></div>
+    <div class="agenda-controls"><button id="agenda-previous" aria-label="Eerdere activiteiten">â†</button><button id="agenda-next" aria-label="Latere activiteiten">â†’</button></div>
+  </div>
+  <p class="note" id="agenda-range">Activiteiten ladenâ€¦</p>
+  <div class="events" id="agenda-events" aria-live="polite"><div class="agenda-loading">Agenda wordt opgehaaldâ€¦</div></div>
+  <p id="agenda-empty" hidden>Er staan in deze periode nog geen openbare activiteiten.</p>
+</section>
+
+<section id="ruimtes" class="rooms live-rooms">
+  <div class="room-intro">
+    <div class="eyebrow">PLEK VOOR JOUW PLANNEN</div>
+    <h2>Bekijk wanneer<br/>er ruimte is.</h2>
+    <p>Kies een datum en dagdeel. Een beheerder beoordeelt je aanvraag; na goedkeuring verschijnt de reservering definitief in de agenda.</p>
+    <span class="demo">Live beschikbaarheid Â· aanvraag zonder account</span>
+  </div>
+  <div class="room-table">
+    <div class="room-controls">
+      <label>Datum<input id="room-date" type="date"/></label>
+      <label>Dagdeel<select id="period">{periods.map(period => <option value={period.value} data-start={period.start} data-end={period.end}>{period.label}</option>)}</select></label>
+    </div>
+    <div id="room-results" aria-live="polite"><p>Beschikbaarheid ladenâ€¦</p></div>
+    <p class="room-note">Een aanvraag is pas definitief nadat een beheerder deze heeft goedgekeurd.</p>
+  </div>
+</section>
+
+<dialog id="reservation-dialog" class="reservation-dialog">
+  <button class="close" type="button" aria-label="Sluiten">Ã—</button>
+  <div class="eyebrow">RESERVERING AANVRAGEN</div>
+  <h2 id="reservation-title">Een plek voor je plannen</h2>
+  <p id="reservation-summary"></p>
+  <form id="reservation-form">
+    <input type="hidden" name="resource_id"/>
+    <input type="hidden" name="starts_at"/>
+    <input type="hidden" name="ends_at"/>
+    <div class="form-grid">
+      <label class="wide">Activiteit of bijeenkomst<input name="title" maxlength="180" required placeholder="Bijvoorbeeld: jubileumavond"/></label>
+      <label>Naam contactpersoon<input name="organizer_name" maxlength="160" autocomplete="name" required/></label>
+      <label>E-mailadres<input name="organizer_email" type="email" maxlength="254" autocomplete="email" required/></label>
+      <label>Telefoonnummer<input name="organizer_phone" type="tel" maxlength="40" autocomplete="tel"/></label>
+      <label>Aantal personen<input name="attendee_count" type="number" min="1" max="2000" inputmode="numeric"/></label>
+      <label class="wide">Toelichting<textarea name="description" maxlength="4000" rows="4" placeholder="Vertel de beheerder wat je wilt organiseren en wat je nodig hebt."></textarea></label>
+      <label class="wide checkbox"><input name="publish_details" type="checkbox"/> Toon na goedkeuring een openbare omschrijving in de agenda</label>
+      <label class="wide public-description" hidden>Openbare omschrijving<textarea name="public_description" maxlength="2000" rows="3" placeholder="Deze tekst mag iedereen op de website zien."></textarea></label>
+    </div>
+    <div id="turnstile-area" class="turnstile-area" hidden><div id="turnstile-widget"></div></div>
+    <p class="privacy-note">Je contactgegevens zijn alleen zichtbaar voor de beheerders en worden niet in de openbare agenda getoond.</p>
+    <div class="dialog-actions"><button type="button" class="dialog-cancel">Annuleren</button><button type="submit" class="dialog-submit">Aanvraag versturen â†’</button></div>
+    <p id="reservation-result" role="status"></p>
+  </form>
+</dialog>
+
+<script>
+  const $ = (selector: string) => document.querySelector(selector) as HTMLElement;
+  const api = '';
+  const roomDate = $('#room-date') as HTMLInputElement;
+  const period = $('#period') as HTMLSelectElement;
+  const dialog = $('#reservation-dialog') as HTMLDialogElement;
+  const form = $('#reservation-form') as HTMLFormElement;
+  let agendaOffset = 0;
+  let submitted = false;
+  let turnstileEnabled = false;
+  let turnstileWidget: string | number | null = null;
+
+  async function loadTurnstile() {
+    if (turnstileWidget !== null) { (window as any).turnstile?.reset(turnstileWidget); return; }
+    const response = await fetch(`${api}/api/v1/config`); const { turnstile } = await response.json();
+    turnstileEnabled = Boolean(turnstile.enabled);
+    if (!turnstileEnabled) return;
+    if (!turnstile.siteKey) throw new Error('Botbescherming is nog niet volledig geconfigureerd.');
+    await new Promise<void>((resolve, reject) => {
+      if ((window as any).turnstile) return resolve();
+      const script = document.createElement('script'); script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; script.async = true; script.defer = true; script.onload = () => resolve(); script.onerror = () => reject(new Error('Botbescherming kon niet worden geladen.')); document.head.append(script);
+    });
+    $('#turnstile-area').hidden = false;
+    turnstileWidget = (window as any).turnstile.render('#turnstile-widget', { sitekey: turnstile.siteKey, theme: 'light', language: 'nl', action: 'reserve' });
+  }
+
+  const localDate = (date: Date) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam' }).format(date);
+  roomDate.value = localDate(new Date());
+  roomDate.min = roomDate.value;
+
+  function selectedTimes() {
+    const option = period.selectedOptions[0];
+    const start = new Date(`${roomDate.value}T${option.dataset.start}:00`);
+    const end = new Date(`${roomDate.value}T${option.dataset.end}:00`);
+    return { start, end, label: option.textContent || '' };
+  }
+
+  async function loadAgenda() {
+    const from = new Date(); from.setDate(from.getDate() + agendaOffset * 30); from.setHours(0, 0, 0, 0);
+    const to = new Date(from); to.setDate(to.getDate() + 90);
+    const container = $('#agenda-events'); container.innerHTML = '<div class="agenda-loading">Agenda wordt opgehaaldâ€¦</div>';
+    $('#agenda-range').textContent = `${new Intl.DateTimeFormat('nl-NL', { month: 'long', year: 'numeric' }).format(from)} â€“ ${new Intl.DateTimeFormat('nl-NL', { month: 'long', year: 'numeric' }).format(to)}`;
+    try {
+      const response = await fetch(`${api}/api/v1/agenda?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`);
+      if (!response.ok) throw new Error();
+      const { events } = await response.json(); container.replaceChildren();
+      ($('#agenda-empty') as HTMLElement).hidden = events.length > 0;
+      for (const event of events) {
+        const start = new Date(event.starts_at); const end = new Date(event.ends_at);
+        const article = document.createElement('article'); article.className = 'event';
+        const date = document.createElement('div'); date.className = 'date';
+        date.innerHTML = `<b>${start.toLocaleDateString('nl-NL', { day: '2-digit', timeZone: 'Europe/Amsterdam' })}</b><span>${start.toLocaleDateString('nl-NL', { month: 'short', timeZone: 'Europe/Amsterdam' }).replace('.', '').toUpperCase()}</span>`;
+        const copy = document.createElement('div'); copy.className = 'event-copy';
+        const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = event.resource_name;
+        const title = document.createElement('h3'); title.textContent = event.title;
+        const meta = document.createElement('p');
+        const time = new Intl.DateTimeFormat('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' });
+        meta.textContent = `${event.resource_location || event.resource_name} Â· ${time.format(start)} â€“ ${time.format(end)}`;
+        copy.append(tag, title, meta);
+        if (event.public_description) { const details = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = 'Meer informatie'; const p = document.createElement('p'); p.textContent = event.public_mıÛİ­¢G§²ÚîÆ­yÓ¢"ã2ã  ¢&V‡—R×'6T’ãã ¢FWVæFVæ6–W3 ¢tG—W2ö†7Bs¢2ããP¢†7B×WF–ÂÖg&öÒÖ‡FÖÃ¢"ãã0¢Væ–f–VC¢ããP ¢&V‡—R×&trãã ¢FWVæFVæ6–W3 ¢tG—W2ö†7Bs¢2ããP¢†7B×WF–Â×&s¢’ãã ¢ff–ÆS¢bãã0 ¢&V‡—R×7G&–æv–g”ãã ¢FWVæFVæ6–W3 ¢tG—W2ö†7Bs¢2ããP¢†7B×WF–Â×FòÖ‡FÖÃ¢’ããP¢Væ–f–VC¢ããP ¢&V‡—T2ãã# ¢FWVæFVæ6–W3 ¢tG—W2ö†7Bs¢2ããP¢&V‡—R×'6S¢’ãã¢&V‡—R×7G&–æv–g“¢ãã¢Væ–f–VC¢ããP ¢&VÖ&²ÖvfÔBãã ¢FWVæFVæ6–W3 ¢tG—W2öÖF7Bs¢Bãã@¢ÖF7B×WF–ÂÖvfÓ¢2ãã ¢Ö–7&öÖ&²ÖW‡FVç6–öâÖvfÓ¢2ãã ¢&VÖ&²×'6S¢ãã ¢&VÖ&²×7G&–æv–g“¢ãã ¢Væ–f–VC¢ããP¢G&ç6—F—fUVW$FWVæFVæ6–W3 ¢Ò7W÷'G2Ö6öÆ÷  ¢&VÖ&²×'6Tãã ¢FWVæFVæ6–W3 ¢tG—W2öÖF7Bs¢Bãã@¢ÖF7B×WF–ÂÖg&öÒÖÖ&¶F÷vã¢"ãã0¢Ö–7&öÖ&²×WF–Â×G—W3¢"ãã ¢Væ–f–VC¢ããP¢G&ç6—F—fUVW$FWVæFVæ6–W3 ¢Ò7W÷'G2Ö6öÆ÷  ¢&VÖ&²×&V‡—Tãã# ¢FWVæFVæ6–W3 ¢tG—W2ö†7Bs¢2ããP¢tG—W2öÖF7Bs¢Bãã@¢ÖF7B×WF–Â×FòÖ†7C¢2ã"ã¢Væ–f–VC¢ããP¢ff–ÆS¢bãã0 ¢&VÖ&²×6Ö'G—çG42ãã3 ¢FWVæFVæ6–W3 ¢&WFW‡C¢’ãã ¢&WFW‡B×6Ö'G—çG3¢bã"ã ¢Væ–f–VC¢ããP¢Væ—7B×WF–Â×f—6—C¢Rãã  ¢&VÖ&²×7G&–æv–g”ãã ¢FWVæFVæ6–W3 ¢tG—W2öÖF7Bs¢Bãã@¢ÖF7B×WF–Â×FòÖÖ&¶F÷vã¢"ãã ¢Væ–f–VC¢ããP ¢&WFW‡BÖÆF–äBãã ¢FWVæFVæ6–W3 ¢tG—W2öæÆ77Bs¢"ãã0¢'6RÖÆF–ã¢rãã ¢Væ–f–VC¢ããP ¢&WFW‡B×6Ö'G—çG4bã"ã ¢FWVæFVæ6–W3 ¢tG—W2öæÆ77Bs¢"ãã0¢æÆ77B×Fò×7G&–æs¢Bãã ¢Væ—7B×WF–Â×f—6—C¢Rãã  ¢&WFW‡B×7G&–æv–g”Bãã ¢FWVæFVæ6–W3 ¢tG—W2öæÆ77Bs¢"ãã0¢æÆ77B×Fò×7G&–æs¢Bãã ¢Væ–f–VC¢ããP ¢&WFW‡D’ãã ¢FWVæFVæ6–W3 ¢tG—W2öæÆ77Bs¢"ãã0¢&WFW‡BÖÆF–ã¢Bãã ¢&WFW‡B×7G&–æv–g“¢Bãã ¢Væ–f–VC¢ããP ¢&öÆÇWBãc2ã ¢FWVæFVæ6–W3 ¢tG—W2öW7G&VRs¢ãã¢÷F–öæÄFWVæFVæ6–W3 ¢tæ’×'2öÇ¦ÖÖÆ–çW‚×ƒcBÖvçRs¢ãRã¢t&öÆÇW÷&öÆÇWÖæG&ö–BÖ&ÒÖV&’s¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖæG&ö–BÖ&ÓcBs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖF'v–âÖ&ÓcBs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖF'v–â×ƒcBs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖg&VV'6BÖ&ÓcBs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖg&VV'6B×ƒcBs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚Ö&ÒÖvçVV&–†bs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚Ö&ÒÖ×W6ÆV&–†bs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚Ö&ÓcBÖvçRs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚Ö&ÓcBÖ×W6Âs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚ÖÆööæscBÖvçRs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚ÖÆööæscBÖ×W6Âs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚×3cBÖvçRs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚×3cBÖ×W6Âs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚×&—67ccBÖvçRs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚×&—67ccBÖ×W6Âs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚×33“‚ÖvçRs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚×ƒcBÖvçRs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖÆ–çW‚×ƒcBÖ×W6Âs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖ÷Væ'6B×ƒcBs¢Bãc2ã¢t&öÆÇW÷&öÆÇWÖ÷Væ†&Ööç’Ö&ÓcBs¢Bãc2ã¢t&öÆÇW÷&öÆÇW×v–ã3"Ö&ÓcBÖ×7f2s¢Bãc2ã¢t&öÆÇW÷&öÆÇW×v–ã3"Ö–3"Ö×7f2s¢Bãc2ã¢t&öÆÇW÷&öÆÇW×v–ã3"×ƒcBÖvçRs¢Bãc2ã¢t&öÆÇW÷&öÆÇW×v–ã3"×ƒcBÖ×7f2s¢Bãc2ã¢g6WfVçG3¢"ã2ã0 ¢6fW"Ö'VffW$"ãã#¢·Ğ ¢6„ãbã¢·Ğ ¢6V×fW$rã‚ãS¢·Ğ ¢6†'ã3BãS ¢FWVæFVæ6–W3 ¢t–Örö6öÆ÷W"s¢ãã ¢FWFV7BÖÆ–&3¢"ãã ¢6V×fW#¢rã‚ãP¢÷F–öæÄFWVæFVæ6–W3 ¢t–Ör÷6†'ÖF'v–âÖ&ÓcBs¢ã3BãP¢t–Ör÷6†'ÖF'v–â×ƒcBs¢ã3BãP¢t–Ör÷6†'ÖÆ–'f—2ÖF'v–âÖ&ÓcBs¢ã"ã@¢t–Ör÷6†'ÖÆ–'f—2ÖF'v–â×ƒcBs¢ã"ã@¢t–Ör÷6†'ÖÆ–'f—2ÖÆ–çW‚Ö&Òs¢ã"ã@¢t–Ör÷6†'ÖÆ–'f—2ÖÆ–çW‚Ö&ÓcBs¢ã"ã@¢t–Ör÷6†'ÖÆ–'f—2ÖÆ–çW‚×3cBs¢ã"ã@¢t–Ör÷6†'ÖÆ–'f—2ÖÆ–çW‚×&—67ccBs¢ã"ã@¢t–Ör÷6†'ÖÆ–'f—2ÖÆ–çW‚×33“‚s¢ã"ã@¢t–Ör÷6†'ÖÆ–'f—2ÖÆ–çW‚×ƒcBs¢ã"ã@¢t–Ör÷6†'ÖÆ–'f—2ÖÆ–çW†×W6ÂÖ&ÓcBs¢ã"ã@¢t–Ör÷6†'ÖÆ–'f—2ÖÆ–çW†×W6Â×ƒcBs¢ã"ã@¢t–Ör÷6†'ÖÆ–çW‚Ö&Òs¢ã3BãP¢t–Ör÷6†'ÖÆ–çW‚Ö&ÓcBs¢ã3BãP¢t–Ör÷6†'ÖÆ–çW‚×3cBs¢ã3BãP¢t–Ör÷6†'ÖÆ–çW‚×&—67ccBs¢ã3BãP¢t–Ör÷6†'ÖÆ–çW‚×33“‚s¢ã3BãP¢t–Ör÷6†'ÖÆ–çW‚×ƒcBs¢ã3BãP¢t–Ör÷6†'ÖÆ–çW†×W6ÂÖ&ÓcBs¢ã3BãP¢t–Ör÷6†'ÖÆ–çW†×W6Â×ƒcBs¢ã3BãP¢t–Ör÷6†'×v6Ó3"s¢ã3BãP¢t–Ör÷6†'×v–ã3"Ö&ÓcBs¢ã3BãP¢t–Ör÷6†'×v–ã3"Ö–3"s¢ã3BãP¢t–Ör÷6†'×v–ã3"×ƒcBs¢ã3BãP¢÷F–öæÃ¢G'VP ¢6†–¶”2ã#2ã ¢FWVæFVæ6–W3 ¢t6†–¶–§2ö6÷&Rs¢2ã#2ã ¢t6†–¶–§2öVæv–æRÖ¦f67&—Bs¢2ã#2ã ¢t6†–¶–§2öVæv–æRÖöæ–wW'VÖs¢2ã#2ã ¢t6†–¶–§2öÆæw2s¢2ã#2ã ¢t6†–¶–§2÷F†VÖW2s¢2ã#2ã ¢t6†–¶–§2÷G—W2s¢2ã#2ã ¢t6†–¶–§2÷g66öFR×FW‡FÖFRs¢ãã ¢tG—W2ö†7Bs¢2ããP ¢6—7FW&ç6”ããS¢·Ğ ¢6ÖöÂ×FöÖÄã‚ã¢·Ğ ¢6÷W&6RÖÖÖ§4ã"ã¢·Ğ ¢76R×6W&FVB×Fö¶Vç4"ãã#¢·Ğ ¢7G&–ær×v–GF„Bã"ã3 ¢FWVæFVæ6–W3 ¢VÖö¦’×&VvWƒ¢‚ãã ¢—2ÖgVÆÇv–GF‚Ö6öFR×ö–çC¢2ãã ¢7G&—Öç6“¢bãã ¢7G&–ær×v–GF„rã"ã ¢FWVæFVæ6–W3 ¢VÖö¦’×&VvWƒ¢ãbã ¢vWBÖV7BÖ6–â×v–GFƒ¢ãbã ¢7G&—Öç6“¢rã"ã  ¢7G&–æv–g’ÖVçF—F–W4BããC ¢FWVæFVæ6–W3 ¢6†&7FW"ÖVçF—F–W2Ö‡FÖÃC¢"ãã ¢6†&7FW"ÖVçF—F–W2ÖÆVv7“¢2ãã  ¢7G&—Öç6”bãã ¢FWVæFVæ6–W3 ¢ç6’×&VvWƒ¢Rãã ¢7G&—Öç6”rã"ã ¢FWVæFVæ6–W3 ¢ç6’×&VvWƒ¢bã2ã  ¢7fvôBãã ¢FWVæFVæ6–W3 ¢6öÖÖæFW#¢ãã ¢772×6VÆV7C¢bãã ¢772×G&VS¢2ã"ã¢772×v†C¢rãã ¢776ó¢RããP¢–6ö6öÆ÷'3¢ãã¢6ƒ¢ãbã ¢F–ç’Ö–æfÆFTãã3¢·Ğ ¢F–ç–W†V4ã2ã¢·Ğ ¢F–ç–vÆö&'”ã"ãs ¢FWVæFVæ6–W3 ¢fF—#¢bãRã‡–6öÖF6„Bããr¢–6öÖF6ƒ¢Bããp ¢G&–ÒÖÆ–æW42ãã¢·Ğ ¢G&÷Vv„"ã"ã¢·Ğ ¢G66öæf6´2ããb‡G—W67&—DRã’ã2“ ¢÷F–öæÄFWVæFVæ6–W3 ¢G—W67&—C¢Rã’ã0 ¢G6Æ–$"ã‚ã ¢÷F–öæÃ¢G'VP ¢G—RÖfW7DBãCã¢·Ğ ¢G—W67&—DRã’ã3¢·Ğ ¢VfôãbãC¢·Ğ ¢VÇG&‡FÖÄãrã¢·Ğ ¢Væ7'—Fôãã3¢·Ğ ¢VæF–6’×G—W4bã#ã¢·Ğ ¢VæF–6”‚ãã#¢·Ğ ¢Væ–f–VDããS ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0¢&–Ã¢"ãã ¢FWfÆ÷¢ãã ¢W‡FVæC¢2ãã ¢—2×Æ–âÖö&£¢Bãã ¢G&÷Vvƒ¢"ã"ã ¢ff–ÆS¢bãã0 ¢Væ–föçDãrãS ¢FWVæFVæ6–W3 ¢772×G&VS¢2ã"ã¢ö†6ƒ¢"ãã ¢VæF–6“¢‚ãã  ¢Væ—7B×WF–ÂÖf–æBÖgFW$Rãã ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0¢Væ—7B×WF–ÂÖ—3¢bãã ¢Væ—7B×WF–ÂÖ—4bãã ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0 ¢Væ—7B×WF–ÂÖÖöF–g’Ö6†–ÆG&VäBãã ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0¢'&’Ö—FW&FS¢"ãã ¢Væ—7B×WF–Â×÷6—F–öäRãã ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0 ¢Væ—7B×WF–Â×&VÖ÷fR×÷6—F–öäRãã ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0¢Væ—7B×WF–Â×f—6—C¢Rãã  ¢Væ—7B×WF–Â×7G&–æv–g’×÷6—F–öäBãã ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0 ¢Væ—7B×WF–Â×f—6—BÖ6†–ÆG&Vä2ãã ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0 ¢Væ—7B×WF–Â×f—6—B×&VçG4bãã# ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0¢Væ—7B×WF–ÂÖ—3¢bãã ¢Væ—7B×WF–Â×f—6—DRãã ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0¢Væ—7B×WF–ÂÖ—3¢bãã¢Væ—7B×WF–Â×f—6—B×&VçG3¢bãã  ¢Vç7F÷&vTãrãS ¢FWVæFVæ6–W3 ¢ç–ÖF6ƒ¢2ãã0¢6†ö¶–F#¢Rãã ¢FW7G#¢"ããP¢ƒ3¢ãRã¢Ç'RÖ66†S¢ãRã ¢æöFRÖfWF6‚ÖæF—fS¢ãbãp¢öfWF6ƒ¢ãRã¢Vfó¢ãbã@ ¢ff–ÆRÖÆö6F–öäRãã3 ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0¢ff–ÆS¢bãã0 ¢ff–ÆRÖÖW76vTBãã3 ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0¢Væ—7B×WF–Â×7G&–æv–g’×÷6—F–öã¢Bãã  ¢ff–ÆTbãã3 ¢FWVæFVæ6–W3 ¢tG—W2÷Væ—7Bs¢2ãã0¢ff–ÆRÖÖW76vS¢Bãã0 ¢f—FTbãBã2„G—W2öæöFT#"ã#ã"“ ¢FWVæFVæ6–W3 ¢W6'V–ÆC¢ã#Rã ¢fF—#¢bãRã‡–6öÖF6„Bããr¢–6öÖF6ƒ¢Bããp¢÷7F773¢‚ãRã#€¢&öÆÇW¢Bãc2ã¢F–ç–vÆö&'“¢ã"ãp¢÷F–öæÄFWVæFVæ6–W3 ¢tG—W2öæöFRs¢#"ã#ã ¢g6WfVçG3¢"ã2ã0 ¢f—FVgTãã2‡f—FTbãBã2„G—W2öæöFT#"ã#ã"’“ ¢÷F–öæÄFWVæFVæ6–W3 ¢f—FS¢bãBã2„G—W2öæöFT#"ã#ã" ¢vV"ÖæÖW76W4"ãã¢·Ğ ¢v†–6‚×Ò×'Vç4ãã¢·Ğ ¢v–FW7BÖÆ–æTRãã ¢FWVæFVæ6–W3 ¢7G&–ær×v–GFƒ¢rã"ã  ¢w&Öç6”’ãã# ¢FWVæFVæ6–W3 ¢ç6’×7G–ÆW3¢bã"ã0¢7G&–ær×v–GFƒ¢rã"ã ¢7G&—Öç6“¢rã"ã  ¢‡††6‚×v6Ôãã¢·Ğ ¢–&w2×'6W$#ãã¢·Ğ ¢–ö7Fò×VWVTã"ã#¢·Ğ ¢–ö7Fò×7–ææW$ã"ã3 ¢FWVæFVæ6–W3 ¢–ö7Fö6öÆ÷'3¢"ã"ã  ¢–ö7Fö6öÆ÷'4"ã"ã¢·Ğ ¢¦öB×FòÖ§6öâ×66†VÖ2ã#Rã"‡¦öD2ã#Rãsb“ ¢FWVæFVæ6–W3 ¢¦öC¢2ã#Rãs` ¢¦öB×Fò×G4ã"ã‡G—W67&—DRã’ã2’‡¦öD2ã#Rãsb“ ¢FWVæFVæ6–W3 ¢G—W67&—C¢Rã’ã0¢¦öC¢2ã#Rãs` ¢¦öD2ã#Rãsc¢·Ğ ¢§v—F6„"ããC¢·Ğ

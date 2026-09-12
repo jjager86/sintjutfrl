@@ -1,9 +1,80 @@
 services:
+  mariadb:
+    image: mariadb:11.8
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?stel MARIADB_ROOT_PASSWORD in}
+      MARIADB_DATABASE: ${DB_DATABASE:-sintjut}
+      MARIADB_USER: ${DB_USER:-sintjut}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?stel DB_PASSWORD in}
+    volumes:
+      - agenda_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment: &api-environment
+      NODE_ENV: production
+      PORT: 3000
+      PUBLIC_URL: ${PUBLIC_URL:?stel PUBLIC_URL in}
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-sintjut}
+      DB_USER: ${DB_USER:-sintjut}
+      DB_PASSWORD: ${DB_PASSWORD:?stel DB_PASSWORD in}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?stel TELEGRAM_BOT_TOKEN in}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:?stel TELEGRAM_WEBHOOK_SECRET in}
+      TELEGRAM_ADMIN_CHAT_ID: ${TELEGRAM_ADMIN_CHAT_ID:?stel TELEGRAM_ADMIN_CHAT_ID in}
+      TELEGRAM_ADMIN_USER_IDS: ${TELEGRAM_ADMIN_USER_IDS:?stel TELEGRAM_ADMIN_USER_IDS in}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      TURNSTILE_EXPECTED_HOSTNAME: ${TURNSTILE_EXPECTED_HOSTNAME:-}
+      GRAPH_SYNC_ENABLED: ${GRAPH_SYNC_ENABLED:-false}
+      GRAPH_TENANT_ID: ${GRAPH_TENANT_ID:-}
+      GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID:-}
+      GRAPH_CLIENT_SECRET: ${GRAPH_CLIENT_SECRET:-}
+      GRAPH_MAILBOX: ${GRAPH_MAILBOX:-}
+      GRAPH_CALENDAR_IDS: ${GRAPH_CALENDAR_IDS:-}
+      GRAPH_WEBHOOK_CLIENT_STATE: ${GRAPH_WEBHOOK_CLIENT_STATE:-}
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    command: ["node", "src/worker.js"]
+    restart: unless-stopped
+    environment: *api-environment
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
   sintjut:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
     expose:
       - "80"
     healthcheck:
@@ -13,3 +84,5 @@ services:
       retries: 3
       start_period: 10s
 
+volumes:
+  agenda_data:
