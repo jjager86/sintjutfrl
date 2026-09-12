@@ -144,6 +144,16 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true });
+    if (req.method === 'GET' && (url.pathname === '/api' || url.pathname === '/api/')) return json(res, 200, {
+      name: 'Sint Jut agenda API',
+      version: 'v1',
+      endpoints: {
+        agenda: '/api/v1/agenda',
+        availability: '/api/v1/availability',
+        resources: '/api/v1/resources',
+        config: '/api/v1/config'
+      }
+    });
     if (req.method === 'GET' && url.pathname === '/api/v1/config') return json(res, 200, { turnstile: { enabled: Boolean(config.turnstile.secretKey), siteKey: config.turnstile.siteKey } });
     if (req.method === 'GET' && url.pathname === '/api/v1/resources') return resources(res);
     if (req.method === 'GET' && url.pathname === '/api/v1/agenda') return agenda(url, res);
