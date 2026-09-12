@@ -11,6 +11,7 @@ Astro-website met een live dorpsagenda, ruimteaanvragen, goedkeuring via Telegra
 - De eerste geldige beslissing wint. Gelijktijdige goedkeuringen en dubbele boekingen worden in MariaDB geblokkeerd.
 - Een goedgekeurde aanvraag verschijnt direct als definitief op de website en wordt daarna naar de gekoppelde Microsoft 365-agenda geschreven.
 - Afspraken die in Outlook/Office worden toegevoegd, komen door de periodieke Graph-sync in de websiteagenda. Privéafspraken verschijnen alleen als **Bezet**.
+- Een agendakaart toont een ingesteld evenementlogo, anders het locatielogo. Voor bekende lokale verenigingen kan de website het aanwezige verenigingsbeeld herkennen; daarna volgt het Sint Jut-beeldmerk als reserve.
 
 ## Uitrollen met Coolify
 
@@ -20,6 +21,8 @@ Astro-website met een live dorpsagenda, ruimteaanvragen, goedkeuring via Telegra
 4. Neem alle variabelen uit `.env.example` over in Coolify. Gebruik sterke, verschillende databasewachtwoorden.
 5. Deploy de stack. De database-tabellen en drie standaardruimtes worden automatisch aangemaakt.
 6. Controleer `https://jouwdomein.nl/api/v1/agenda` en de homepage.
+
+De huidige stagingomgeving gebruikt `https://sintjutfrl.staging.ef-it.nl/`; deze URL staat ook als voorbeeldwaarde voor `PUBLIC_URL` in `.env.example`.
 
 Alle publieke API-routes lopen via dezelfde FQDN als de website: `/api/*`
 wordt door Nginx doorgestuurd naar de interne service `api:3000`. Publiceer de
@@ -85,7 +88,7 @@ Voor de volledige stack: kopieer `.env.example` naar `.env`, vul minimaal de ver
 - `src/components/Agenda.astro` — openbare agenda en aanvraagformulier
 - `services/api/src/server.js` — API, Turnstile-validatie en Telegram-webhook
 - `services/api/src/worker.js` — Telegrammeldingen en Microsoft Graph-sync
-- `services/api/migrations/001_initial.sql` — MariaDB-schema
+- `services/api/migrations/` — MariaDB-schema en uitbreidingen, waaronder optionele logo-URL's voor locaties en evenementen
 - `docker-compose.yml` — Coolify-productiestack
 
 ## Facebook en logo

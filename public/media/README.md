@@ -16,3 +16,7 @@ Deze map bevat lokaal opgeslagen beelden die op de bijbehorende publieke bronpag
 Bij het vervangen van een bericht wordt ook de lokale afbeelding en de bronvermelding bijgewerkt. Controleer vóór productiepublicatie dat Dorpsbelang toestemming heeft voor herpublicatie van foto's; verenigingslogo's worden alleen gebruikt om naar de betreffende vereniging te verwijzen.
 
 Het jubileumlogo dorpsbelang-125jaar.webp is afkomstig uit het door de gebruiker aangeleverde Dorpsbelang_125jaar_logo.zip. Het is een geoptimaliseerde webversie van de JPG, met behoud van de jubileumvermelding.
+
+De vier bestanden `hero-sintjohannesga.webp`, `hero-rotsterhaule.webp`, `hero-rohel.webp` en `hero-vierhuis.webp` zijn op 12 september 2026 gegenereerde sfeerbeelden. Ze zijn geïnspireerd op het Friese landschap en stellen geen specifieke plek of historisch monument voor.
+
+De verenigingenpagina en agenda gebruiken voor DWP, OTKook, It Middelpunt, Klaverjasvereniging DWP en IJsclub Eensgezindheid de officiële afbeeldings-URL's die door de opdrachtgever zijn aangeleverd vanaf `sintjut.frl`.

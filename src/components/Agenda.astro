@@ -25,7 +25,7 @@ const periods = [
   <div class="room-table">
     <div class="room-controls">
       <label>Datum<input id="room-date" type="date"/></label>
-      <label>Dagdeel<select id="period">{periods.map(period => <option value={period.value} data-start={period.start} data-end={period.end}>{period.label}</option>)}</select></label>
+      <fieldset class="period-picker"><legend>Dagdeel</legend><div role="group" aria-label="Kies een dagdeel">{periods.map((period,index) => <button type="button" class:list={['period-button',index===0&&'is-selected']} data-value={period.value} data-start={period.start} data-end={period.end} aria-pressed={index===0?'true':'false'}>{period.label}</button>)}</div></fieldset>
     </div>
     <div id="room-results" aria-live="polite"><p>Beschikbaarheid laden…</p></div>
     <p class="room-note">Een aanvraag is pas definitief nadat een beheerder deze heeft goedgekeurd.</p>
@@ -62,13 +62,36 @@ const periods = [
   const $ = (selector: string) => document.querySelector(selector) as HTMLElement;
   const api = '';
   const roomDate = $('#room-date') as HTMLInputElement;
-  const period = $('#period') as HTMLSelectElement;
+  const periodButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.period-button'));
   const dialog = $('#reservation-dialog') as HTMLDialogElement;
   const form = $('#reservation-form') as HTMLFormElement;
   let agendaOffset = 0;
   let submitted = false;
   let turnstileEnabled = false;
   let turnstileWidget: string | number | null = null;
+  const knownEventLogos = [
+    [/klaverjas/i, 'https://www.sintjut.frl/wp-content/uploads/2025/10/2500-klaverjas-DWP.jpg.png'],
+    [/\bdwp\b|voetbal/i, 'https://www.sintjut.frl/wp-content/uploads/2025/03/Voetbalvereniging-DWP.png'],
+    [/tennis/i, '/media/tennisvereniging.png'],
+    [/oranjevereniging/i, '/media/oranjevereniging.jpg'],
+    [/abe sjipkop|mudrun/i, '/media/abe-sjipkop-mudrun.jpg'],
+    [/it middelpunt/i, 'https://www.sintjut.frl/wp-content/uploads/2025/10/It-Middelpunt.jpg'],
+    [/otkook|op tiid kriitsje|biljart/i, 'https://www.sintjut.frl/wp-content/uploads/2025/10/OTK.jpg'],
+    [/ijsclub|schaats/i, 'https://www.sintjut.frl/wp-content/uploads/2025/10/IJsclub-Eensgezindheid-e1761683277534.png']
+  ] as const;
+
+  function safeLogo(value: unknown) {
+    if (typeof value !== 'string') return '';
+    if (value.startsWith('/') && !value.startsWith('//')) return value;
+    try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : ''; } catch { return ''; }
+  }
+
+  function eventLogo(event: any) {
+    const supplied = safeLogo(event.logo_url) || safeLogo(event.resource_logo_url);
+    if (supplied) return supplied;
+    const searchable = `${event.title || ''} ${event.public_description || ''}`;
+    return knownEventLogos.find(([pattern]) => pattern.test(searchable))?.[1] || '/favicon.svg';
+  }
 
   async function loadTurnstile() {
     if (turnstileWidget !== null) { (window as any).turnstile?.reset(turnstileWidget); return; }
@@ -89,7 +112,7 @@ const periods = [
   roomDate.min = roomDate.value;
 
   function selectedTimes() {
-    const option = period.selectedOptions[0];
+    const option = periodButtons.find(button => button.getAttribute('aria-pressed') === 'true') || periodButtons[0];
     const start = new Date(`${roomDate.value}T${option.dataset.start}:00`);
     const end = new Date(`${roomDate.value}T${option.dataset.end}:00`);
     return { start, end, label: option.textContent || '' };
@@ -109,7 +132,7 @@ const periods = [
         const start = new Date(event.starts_at); const end = new Date(event.ends_at);
         const article = document.createElement('article'); article.className = 'event';
         const mark = document.createElement('div'); mark.className = 'event-mark';
-        const markImage = document.createElement('img'); markImage.src = '/favicon.svg'; markImage.alt = 'Sint Jut'; markImage.width = 56; markImage.height = 56; mark.append(markImage);
+        const markImage = document.createElement('img'); markImage.src = eventLogo(event); markImage.alt = event.logo_url ? `Logo van ${event.title}` : event.resource_logo_url ? `Logo van ${event.resource_name}` : 'Beeldmerk bij de activiteit'; markImage.width = 56; markImage.height = 56; markImage.addEventListener('error', () => { markImage.src = '/favicon.svg'; markImage.alt = 'Sint Jut'; }, { once: true }); mark.append(markImage);
         const date = document.createElement('div'); date.className = 'date';
         date.innerHTML = `<b>${start.toLocaleDateString('nl-NL', { day: '2-digit', timeZone: 'Europe/Amsterdam' })}</b><span>${start.toLocaleDateString('nl-NL', { month: 'short', timeZone: 'Europe/Amsterdam' }).replace('.', '').toUpperCase()}</span>`;
         const copy = document.createElement('div'); copy.className = 'event-copy';
@@ -169,7 +192,8 @@ const periods = [
   dialog.querySelector('.close')?.addEventListener('click', () => dialog.close());
   dialog.querySelector('.dialog-cancel')?.addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => { if (submitted) window.location.reload(); });
-  roomDate.addEventListener('change', loadAvailability); period.addEventListener('change', loadAvailability);
+  roomDate.addEventListener('change', loadAvailability);
+  periodButtons.forEach(button => button.addEventListener('click', () => { periodButtons.forEach(item => { const selected=item===button; item.classList.toggle('is-selected',selected); item.setAttribute('aria-pressed',String(selected)); }); loadAvailability(); }));
   $('#agenda-previous').addEventListener('click', () => { agendaOffset--; loadAgenda(); });
   $('#agenda-next').addEventListener('click', () => { agendaOffset++; loadAgenda(); });
   loadAgenda(); loadAvailability();

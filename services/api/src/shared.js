@@ -1,6 +1,6 @@
 import mariadb from 'mariadb';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 
 const calendarIds = new Map((process.env.GRAPH_CALENDAR_IDS || '').split(',').map(entry => {
   const separator = entry.indexOf('=');
@@ -50,11 +50,15 @@ export const sqlDate = value => new Date(value).toISOString().slice(0, 23).repla
 export const isoDate = value => value ? `${String(value).replace(' ', 'T')}Z` : null;
 
 export async function migrate() {
-  const sql = await readFile(new URL('../migrations/001_initial.sql', import.meta.url), 'utf8');
-  const statements = sql.split(/;\s*(?:\n|$)/).map(v => v.trim()).filter(Boolean);
   const connection = await pool.getConnection();
   try {
-    for (const statement of statements) await connection.query(statement);
+    const migrationDirectory = new URL('../migrations/', import.meta.url);
+    const files = (await readdir(migrationDirectory)).filter(file => file.endsWith('.sql')).sort();
+    for (const file of files) {
+      const sql = await readFile(new URL(file, migrationDirectory), 'utf8');
+      const statements = sql.split(/;\s*(?:\n|$)/).map(v => v.trim()).filter(Boolean);
+      for (const statement of statements) await connection.query(statement);
+    }
     for (const [slug, id] of config.graph.calendarIds) {
       await connection.query('UPDATE resources SET graph_calendar_id=? WHERE slug=?', [id, slug]);
     }

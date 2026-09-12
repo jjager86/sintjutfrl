@@ -22,7 +22,7 @@ function limited(req) {
 }
 
 async function resources(res) {
-  const rows = await pool.query('SELECT id, slug, name, location, capacity FROM resources WHERE is_active = 1 ORDER BY name');
+  const rows = await pool.query('SELECT id, slug, name, location, capacity, logo_url FROM resources WHERE is_active = 1 ORDER BY name');
   json(res, 200, { resources: rows });
 }
 
@@ -35,8 +35,8 @@ async function agenda(url, res) {
   const params = [sqlDate(from), sqlDate(to)];
   let resourceSql = '';
   if (resourceId) { resourceSql = ' AND e.resource_id = ?'; params.push(resourceId); }
-  const rows = await pool.query(`SELECT e.id, e.title, e.public_description, e.location, e.starts_at, e.ends_at, e.is_private,
-    r.id resource_id, r.name resource_name, r.location resource_location
+  const rows = await pool.query(`SELECT e.id, e.title, e.public_description, e.logo_url, e.location, e.starts_at, e.ends_at, e.is_private,
+    r.id resource_id, r.name resource_name, r.location resource_location, r.logo_url resource_logo_url
     FROM calendar_events e JOIN resources r ON r.id=e.resource_id
     WHERE e.is_cancelled=0 AND e.starts_at < ? AND e.ends_at > ?${resourceSql} ORDER BY e.starts_at`, [params[1], params[0], ...params.slice(2)]);
   json(res, 200, { events: rows.map(row => ({ ...row, title: row.is_private ? 'Bezet' : row.title, public_description: row.is_private ? null : row.public_description, starts_at: isoDate(row.starts_at), ends_at: isoDate(row.ends_at) })) });
