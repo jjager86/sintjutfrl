@@ -81,3 +81,9 @@ Voor de volledige stack: kopieer `.env.example` naar `.env`, vul minimaal de ver
 - `services/api/src/worker.js` — Telegrammeldingen en Microsoft Graph-sync
 - `services/api/migrations/001_initial.sql` — MariaDB-schema
 - `docker-compose.yml` — Coolify-productiestack
+
+## Facebook en logo
+
+De startpagina haalt JSON Feed op bij `https://rss.app/feeds/v1.1/WGIxu8P4rGM7qjlZ.json` wanneer de pagina wordt geopend en daarna iedere tien minuten zolang de pagina zichtbaar is. De verversknop controleert direct. RSS.app bepaalt zelf wanneer de bron wordt bijgewerkt. Bij een fout blijft de vorige selectie zichtbaar met een melding; zonder JavaScript blijft de opgeslagen selectie staan. Titel, tekst, datum en HTTPS-links worden als tekst/DOM-elementen verwerkt, nooit als ingesloten feed-HTML. Foto's verdwijnen wanneer ze niet meer beschikbaar zijn.
+
+Het aangeleverde jubileumlogo staat als geoptimaliseerd WebP-bestand in `public/media/dorpsbelang-125jaar.webp` en wordt via `Logo.astro` in de kop en voettekst gebruikt.

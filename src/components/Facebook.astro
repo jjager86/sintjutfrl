@@ -2,14 +2,45 @@
 import feed from '../../public/facebook.json';
 ---
 <section id="facebook">
-  <div class="section-head"><div><div class="eyebrow">UIT HET DORP</div><h2>Ook op Facebook</h2></div><a class="text-link" href="https://facebook.com/1665399913785479">Bekijk de Facebookpagina ↗</a></div>
-  <p class="note">{feed.mode==='snapshot'?'Selectie van berichten op de bestaande website, bekeken op':'Feed opgehaald op'} {feed.updatedAt}. {feed.mode==='snapshot'?'Nog geen automatisch bijgewerkte RSS-feed.':''}</p>
-  <div class="community facebook-cards">{feed.items.slice(0,6).map(item=><article>
+  <div class="section-head"><div><div class="eyebrow">UIT HET DORP</div><h2>Ook op Facebook</h2></div><a class="text-link" href="https://www.facebook.com/stjut">Bekijk de Facebookpagina ↗</a></div>
+  <div class="feed-meta"><p class="note" id="feed-status" role="status">Opgeslagen selectie van {feed.updatedAt}. Nieuwe berichten worden gecontroleerd.</p><button id="feed-refresh" class="feed-refresh" type="button">Verversen ↻</button></div>
+  <div id="feed-cards" class="community facebook-cards">{feed.items.slice(0,6).map(item=><article>
     <a class="post-media" href={item.url} aria-label={`Open bericht: ${item.title}`}><img src={item.image || '/favicon.svg'} alt={item.imageAlt || ''} loading="lazy" width="640" height="400"/></a>
     <div class="post-body"><span class="facebook-source">f <span>Sintjohannesga / Rotsterhaule</span></span><h3>{item.title}</h3><p>{item.description}</p><a class="text-link" href={item.url}>Lees het bericht op Facebook ↗</a></div>
   </article>)}</div>
-  {!feed.items.length&&<p>Er zijn op dit moment geen berichten beschikbaar. Bekijk de Facebookpagina voor het laatste nieuws.</p>}
+  <p id="feed-empty" hidden={feed.items.length>0}>Er zijn geen berichten beschikbaar. Bekijk de Facebookpagina voor het laatste nieuws.</p><noscript><p>Schakel JavaScript in voor actuele berichten of bekijk de Facebookpagina.</p></noscript>
 </section>
 <script>
-  document.querySelectorAll<HTMLImageElement>('.post-media img').forEach(image => image.addEventListener('error', () => { image.src = '/favicon.svg'; image.classList.add('image-fallback'); }, { once: true }));
+const FEED='https://rss.app/feeds/v1.1/WGIxu8P4rGM7qjlZ.json';
+const cards=document.querySelector('#feed-cards')!;
+const status=document.querySelector('#feed-status')!;
+const empty=document.querySelector<HTMLElement>('#feed-empty')!;
+const refresh=document.querySelector<HTMLButtonElement>('#feed-refresh')!;
+const dateFormat=new Intl.DateTimeFormat('nl-NL',{dateStyle:'medium',timeZone:'Europe/Amsterdam'});
+let lastSuccess=''; let pending=false;
+function text(value:unknown,max:number){return typeof value==='string'?value.replace(/\s+/g,' ').trim().slice(0,max):'';}
+function safeLink(value:unknown){try{const u=new URL(String(value));return u.protocol==='https:'&&!u.username&&!u.password?u.href:'';}catch{return '';}}
+async function update(){
+ if(pending)return; pending=true;refresh.disabled=true;refresh.textContent='Ophalen…';
+ try{
+  const response=await fetch(FEED,{signal:AbortSignal.timeout(12000),credentials:'omit',cache:'no-store'});
+  if(!response.ok)throw Error('Feed unavailable');
+  const raw=await response.text();if(raw.length>2000000)throw Error('Feed too large');
+  const data=JSON.parse(raw);if(!Array.isArray(data.items)||!['https://jsonfeed.org/version/1','https://jsonfeed.org/version/1.1'].includes(data.version))throw Error('Invalid feed');
+  const fragment=document.createDocumentFragment();const seen=new Set();let count=0;
+  for(const item of data.items){
+   if(!item||typeof item!=='object')continue;
+   const url=safeLink(item.url);const title=text(item.title||item.content_text,110);if(!url||!title||seen.has(url))continue;seen.add(url);
+   const article=document.createElement('article');const source=document.createElement('span');source.className='facebook-source';source.textContent='f ';const name=document.createElement('span');name.textContent='Sintjohannesga / Rotsterhaule';source.append(name);article.append(source);
+   const date=new Date(item.date_published);if(Number.isFinite(date.getTime())){const time=document.createElement('time');time.dateTime=date.toISOString();time.textContent=dateFormat.format(date);article.append(time);}
+   const body=document.createElement('div');body.className='post-body';const imageUrl=safeLink(item.image);if(imageUrl){const media=document.createElement('a');media.href=url;media.className='post-media';media.setAttribute('aria-label',title);const image=document.createElement('img');image.src=imageUrl;image.alt='';image.width=640;image.height=400;image.loading='lazy';image.referrerPolicy='no-referrer';image.addEventListener('error',()=>media.remove(),{once:true});media.append(image);article.prepend(media);}while(article.lastChild && (article.lastChild as HTMLElement).className!=='post-media'){body.prepend(article.lastChild);}article.append(body);const heading=document.createElement('h3');heading.textContent=title;const description=document.createElement('p');description.textContent=text(item.content_text||item.summary,360);const link=document.createElement('a');link.href=url;link.className='text-link';link.textContent='Lees het bericht op Facebook ↗';body.append(heading,description,link);fragment.append(article);if(++count===6)break;
+  }
+  if(data.items.length>0&&count===0)throw Error('No usable items');
+  cards.replaceChildren(fragment);empty.hidden=count>0;
+  lastSuccess=new Intl.DateTimeFormat('nl-NL',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Amsterdam'}).format(new Date());
+  status.textContent=`Gecontroleerd op ${lastSuccess} · via RSS.app. Controle iedere 10 minuten zolang deze pagina open is.`;
+ }catch{status.textContent=`Nieuwe berichten zijn tijdelijk niet op te halen. ${lastSuccess?'Laatst gecontroleerd op '+lastSuccess+'. ':'De laatst opgeslagen berichten blijven staan. '}Bekijk Facebook voor de laatste updates.`;}
+ finally{pending=false;refresh.disabled=false;refresh.textContent='Verversen ↻';}
+}
+refresh.addEventListener('click',update);update();setInterval(()=>{if(!document.hidden)update();},600000);
 </script>

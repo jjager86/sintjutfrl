@@ -14,3 +14,5 @@ Deze map bevat lokaal opgeslagen beelden die op de bijbehorende publieke bronpag
 | `facebook-melle-jens.jpg` | Facebookbericht dat in `facebook.json` is gekoppeld |
 
 Bij het vervangen van een bericht wordt ook de lokale afbeelding en de bronvermelding bijgewerkt. Controleer vóór productiepublicatie dat Dorpsbelang toestemming heeft voor herpublicatie van foto's; verenigingslogo's worden alleen gebruikt om naar de betreffende vereniging te verwijzen.
+
+Het jubileumlogo dorpsbelang-125jaar.webp is afkomstig uit het door de gebruiker aangeleverde Dorpsbelang_125jaar_logo.zip. Het is een geoptimaliseerde webversie van de JPG, met behoud van de jubileumvermelding.
