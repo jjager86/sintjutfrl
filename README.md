@@ -21,6 +21,12 @@ Astro-website met een live dorpsagenda, ruimteaanvragen, goedkeuring via Telegra
 5. Deploy de stack. De database-tabellen en drie standaardruimtes worden automatisch aangemaakt.
 6. Controleer `https://jouwdomein.nl/api/v1/agenda` en de homepage.
 
+Alle publieke API-routes lopen via dezelfde FQDN als de website: `/api/*`
+wordt door Nginx doorgestuurd naar de interne service `api:3000`. Publiceer de
+`api`-service daarom niet met een eigen domein of poort. Een verzoek aan `/api`
+wordt doorgestuurd naar `/api/`, waar een JSON-overzicht van de beschikbare
+publieke endpoints staat. De functionele endpoints beginnen bij `/api/v1/`.
+
 De volume `agenda_data` bevat de MariaDB-data en moet persistent blijven. Alleen de Nginx-service hoort publiek bereikbaar te zijn; `api`, `worker` en `mariadb` blijven intern.
 
 ## Telegram instellen
