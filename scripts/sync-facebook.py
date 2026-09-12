@@ -18,6 +18,14 @@ class Text(HTMLParser):
         if not self.skip: self.parts.append(data)
 def plain(value):
     p=Text(); p.feed(value or ''); return re.sub(r'\s+', ' ', ' '.join(p.parts)).strip()
+class FirstImage(HTMLParser):
+    def __init__(self):
+        super().__init__(); self.url=''; self.alt=''
+    def handle_starttag(self, tag, attrs):
+        if tag != 'img' or self.url: return
+        values=dict(attrs); self.url=values.get('src',''); self.alt=plain(values.get('alt',''))[:180]
+def html_image(value):
+    p=FirstImage(); p.feed(value or ''); return (p.url,p.alt) if safe_url(p.url) else ('','')
 def safe_url(value):
     p=urlparse(value or '')
     return p.scheme=='https' and bool(p.hostname) and not p.username and not p.password
@@ -36,8 +44,17 @@ def parse_feed(raw):
             if node.get('href') and node.get('rel','alternate')=='alternate': link=node.get('href'); break
         if not title or not safe_url(link) or link in seen: continue
         seen.add(link)
-        description=plain(el.findtext('description') or el.findtext('summary') or el.findtext('content'))[:360]
-        items.append(dict(title=title,description=description,url=link))
+        rich=el.findtext('description') or el.findtext('summary') or el.findtext('content') or ''
+        description=plain(rich)[:360]
+        image=''; image_alt=''
+        for node in el.iter():
+            candidate=node.get('url','') if node.tag in ('enclosure','thumbnail','content') else ''
+            if safe_url(candidate) and (node.tag != 'enclosure' or node.get('type','').startswith('image/')):
+                image=candidate; image_alt=plain(node.get('title',''))[:180]; break
+        if not image: image,image_alt=html_image(rich)
+        item=dict(title=title,description=description,url=link)
+        if image: item.update(image=image,imageAlt=image_alt or title)
+        items.append(item)
         if len(items)==6: break
     return items
 def main():

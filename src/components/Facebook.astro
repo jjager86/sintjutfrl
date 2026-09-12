@@ -1,4 +1,15 @@
 ---
 import feed from '../../public/facebook.json';
 ---
-<section id="facebook"><div class="section-head"><div><div class="eyebrow">UIT HET DORP</div><h2>Ook op Facebook</h2></div><a class="text-link" href="https://facebook.com/1665399913785479">Bekijk de Facebookpagina ↗</a></div><p class="note">{feed.mode==='snapshot'?'Selectie van berichten op de bestaande website, bekeken op':'Feed opgehaald op'} {feed.updatedAt}. {feed.mode==='snapshot'?'Nog geen automatisch bijgewerkte RSS-feed.':''}</p><div class="community facebook-cards">{feed.items.slice(0,6).map(item=><article><span class="facebook-source">f <span>Sintjohannesga / Rotsterhaule</span></span><h3>{item.title}</h3><p>{item.description}</p><a class="text-link" href={item.url}>Lees het bericht op Facebook ↗</a></article>)}</div>{!feed.items.length&&<p>Er zijn op dit moment geen berichten beschikbaar. Bekijk de Facebookpagina voor het laatste nieuws.</p>}</section>
+<section id="facebook">
+  <div class="section-head"><div><div class="eyebrow">UIT HET DORP</div><h2>Ook op Facebook</h2></div><a class="text-link" href="https://facebook.com/1665399913785479">Bekijk de Facebookpagina ↗</a></div>
+  <p class="note">{feed.mode==='snapshot'?'Selectie van berichten op de bestaande website, bekeken op':'Feed opgehaald op'} {feed.updatedAt}. {feed.mode==='snapshot'?'Nog geen automatisch bijgewerkte RSS-feed.':''}</p>
+  <div class="community facebook-cards">{feed.items.slice(0,6).map(item=><article>
+    <a class="post-media" href={item.url} aria-label={`Open bericht: ${item.title}`}><img src={item.image || '/favicon.svg'} alt={item.imageAlt || ''} loading="lazy" width="640" height="400"/></a>
+    <div class="post-body"><span class="facebook-source">f <span>Sintjohannesga / Rotsterhaule</span></span><h3>{item.title}</h3><p>{item.description}</p><a class="text-link" href={item.url}>Lees het bericht op Facebook ↗</a></div>
+  </article>)}</div>
+  {!feed.items.length&&<p>Er zijn op dit moment geen berichten beschikbaar. Bekijk de Facebookpagina voor het laatste nieuws.</p>}
+</section>
+<script>
+  document.querySelectorAll<HTMLImageElement>('.post-media img').forEach(image => image.addEventListener('error', () => { image.src = '/favicon.svg'; image.classList.add('image-fallback'); }, { once: true }));
+</script>
