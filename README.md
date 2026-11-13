@@ -32,6 +32,14 @@ publieke endpoints staat. De functionele endpoints beginnen bij `/api/v1/`.
 
 De volume `agenda_data` bevat de MariaDB-data en moet persistent blijven. Alleen de Nginx-service hoort publiek bereikbaar te zijn; `api`, `worker` en `mariadb` blijven intern.
 
+## Agenda beheren
+
+De mobielvriendelijke beheerpagina staat op `/admin/`, op staging dus op `https://sintjutfrl.staging.ef-it.nl/admin/`. Stel in Coolify eerst `ADMIN_TOKEN` in op een willekeurige installatiesleutel van minimaal 32 tekens en deploy de stack opnieuw. Bij het eerste bezoek gebruik je deze sleutel één keer om het eerste hoofdbeheeraccount met gebruikersnaam en wachtwoord aan te maken. Zodra een account bestaat, kan de installatiestap niet opnieuw worden uitgevoerd.
+
+Een hoofdbeheerder kan meerdere gebruikers aanmaken en per dorpsruimte afzonderlijk rechten geven voor bekijken, toevoegen, wijzigen en verwijderen. Gewone beheerders zien uitsluitend de toegewezen ruimtes. Inlogsessies worden alleen in `sessionStorage` van de browser bewaard en verlopen na twaalf uur. Afspraken uit Microsoft 365 blijven in Outlook beheerd. Goedgekeurde reserveringen blijven via de bestaande Telegram- en reserveringsstroom lopen. Alle beveiligde admin-API-routes staan onder `/api/v1/admin/` en vereisen een geldige persoonlijke sessie.
+
+De openbare evenementenkalender staat op `/evenementenkalender/`. Inwoners kunnen daar een evenement ter beoordeling aanmelden. Beheerders met rechten op de virtuele ruimte **Evenementenkalender** zien deze aanvragen in het tabblad **Aanvragen** en kunnen ze goedkeuren of afwijzen. Vertrouwde organisatoren kunnen dezelfde ruimte toegewezen krijgen met rechten voor bekijken, toevoegen, wijzigen en eventueel verwijderen; zij publiceren dan rechtstreeks via de admin. Beheerders kunnen daarnaast een voorbeeldlijst ophalen van de officiële [evenementenkalender van De Fryske Marren](https://www.defryskemarren.nl/direct-regelen/vergunningen-toestemming/evenementenkalender/) en evenementen afzonderlijk importeren. De bron wordt vijftien minuten in het geheugen gecachet en reeds geïmporteerde items worden niet dubbel toegevoegd. De kalender is ook beschikbaar als iCalendar-feed op `/api/v1/calendar.ics`.
+
 ## Telegram instellen
 
 1. Maak via **@BotFather** een bot en plaats de token als `TELEGRAM_BOT_TOKEN` in Coolify.

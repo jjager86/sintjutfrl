@@ -10,6 +10,7 @@ const calendarIds = new Map((process.env.GRAPH_CALENDAR_IDS || '').split(',').ma
 export const config = {
   port: Number(process.env.PORT || 3000),
   publicUrl: (process.env.PUBLIC_URL || 'http://localhost:3000').replace(/\/$/, ''),
+  adminToken: process.env.ADMIN_TOKEN || '',
   db: {
     host: process.env.DB_HOST || 'mariadb',
     port: Number(process.env.DB_PORT || 3306),
