@@ -19,4 +19,4 @@ Het jubileumlogo dorpsbelang-125jaar.webp is afkomstig uit het door de gebruiker
 
 De vier bestanden `hero-sintjohannesga.webp`, `hero-rotsterhaule.webp`, `hero-rohel.webp` en `hero-vierhuis.webp` zijn op 12 september 2026 gegenereerde sfeerbeelden. Ze zijn geïnspireerd op het Friese landschap en stellen geen specifieke plek of historisch monument voor.
 
-De verenigingenpagina en agenda gebruiken voor DWP, OTKook, It Middelpunt, Klaverjasvereniging DWP en IJsclub Eensgezindheid de officiële afbeeldings-URL's die door de opdrachtgever zijn aangeleverd vanaf `sintjut.frl`.
+De verenigingenpagina en agenda gebruiken voor DWP, Biljartvereniging OTK, It Middelpunt, Klaverjasvereniging DWP en IJsclub Eensgezindheid de officiële afbeeldings-URL's die door de opdrachtgever zijn aangeleverd vanaf `sintjut.frl`.
