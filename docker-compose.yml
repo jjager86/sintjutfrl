@@ -26,6 +26,7 @@ services:
       PORT: 3000
       PUBLIC_URL: ${PUBLIC_URL:?stel PUBLIC_URL in}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      MEMBERSHIP_ENCRYPTION_KEY: ${MEMBERSHIP_ENCRYPTION_KEY:-}
       DB_HOST: mariadb
       DB_PORT: 3306
       DB_DATABASE: ${DB_DATABASE:-sintjut}

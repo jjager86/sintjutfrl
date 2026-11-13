@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { config, isoDate, migrate, pool, sha256, sqlDate, telegram, token, uuid, verifyTurnstile } from './shared.js';
 
@@ -51,6 +51,7 @@ const serializeAdminUser = user => ({
   username: user.username,
   display_name: user.display_name,
   is_super_admin: Boolean(user.is_super_admin),
+  can_manage_memberships: Boolean(user.can_manage_memberships),
   is_active: Boolean(user.is_active),
   permissions: (user.permissions || []).map(permission => ({
     resource_id: permission.resource_id,
@@ -64,7 +65,7 @@ const serializeAdminUser = user => ({
 async function authenticateAdmin(req, res) {
   const header = clean(req.headers.authorization, 4096);
   const supplied = header.startsWith('Bearer ') ? header.slice(7) : '';
-  const row = supplied ? (await pool.query(`SELECT u.id,u.username,u.display_name,u.is_super_admin,u.is_active,s.id session_id
+  const row = supplied ? (await pool.query(`SELECT u.id,u.username,u.display_name,u.is_super_admin,u.can_manage_memberships,u.is_active,s.id session_id
     FROM admin_sessions s JOIN admin_users u ON u.id=s.user_id
     WHERE s.token_hash=? AND s.expires_at>NOW(3) AND u.is_active=1`, [sha256(supplied)]))[0] : null;
   if (!row) { res.setHeader('www-authenticate', 'Bearer realm="Sint Jut agenda"'); json(res, 401, { error: 'Je sessie is verlopen of ongeldig.' }); return null; }
@@ -116,7 +117,7 @@ async function createAdminUserRecord(res, data, forceSuper = false) {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    await connection.query('INSERT INTO admin_users(id,username,display_name,password_hash,password_salt,is_super_admin) VALUES (?,?,?,?,?,?)', [id,username,displayName,hash,salt,isSuper]);
+    await connection.query('INSERT INTO admin_users(id,username,display_name,password_hash,password_salt,is_super_admin,can_manage_memberships) VALUES (?,?,?,?,?,?,?)', [id,username,displayName,hash,salt,isSuper,Boolean(data.can_manage_memberships)]);
     if (!isSuper) await saveAdminPermissions(connection,id,data.permissions);
     await connection.commit();
     const user = (await pool.query('SELECT * FROM admin_users WHERE id=?',[id]))[0]; user.permissions = isSuper ? [] : await pool.query('SELECT resource_id,can_view,can_create,can_edit,can_delete FROM admin_user_resources WHERE user_id=?',[id]);
@@ -135,19 +136,19 @@ async function saveAdminPermissions(connection, userId, permissions) {
 }
 
 async function listAdminUsers(res) {
-  const users=await pool.query('SELECT id,username,display_name,is_super_admin,is_active,created_at FROM admin_users ORDER BY display_name');
+  const users=await pool.query('SELECT id,username,display_name,is_super_admin,can_manage_memberships,is_active,created_at FROM admin_users ORDER BY display_name');
   const permissions=await pool.query('SELECT user_id,resource_id,can_view,can_create,can_edit,can_delete FROM admin_user_resources');
   json(res,200,{users:users.map(user=>serializeAdminUser({...user,permissions:permissions.filter(permission=>permission.user_id===user.id)}))});
 }
 
 async function updateAdminUser(req,res,admin,id) {
   const data=await body(req); const current=(await pool.query('SELECT * FROM admin_users WHERE id=?',[id]))[0]; if(!current)return json(res,404,{error:'Gebruiker niet gevonden.'});
-  const username=clean(data.username,80).toLowerCase();const displayName=clean(data.display_name,160);const isSuper=Boolean(data.is_super_admin);const isActive=data.is_active!==false;
+  const username=clean(data.username,80).toLowerCase();const displayName=clean(data.display_name,160);const isSuper=Boolean(data.is_super_admin);const canManageMemberships=Boolean(data.can_manage_memberships);const isActive=data.is_active!==false;
   if(!/^[a-z0-9._-]{3,80}$/.test(username)||!displayName)return json(res,422,{error:'Controleer gebruikersnaam en weergavenaam.'});
   if(id===admin.id&&(!isSuper||!isActive))return json(res,409,{error:'Je kunt je eigen hoofdbeheerrechten of account niet uitschakelen.'});
   if(current.is_super_admin&&(!isSuper||!isActive)){const [{count}]=await pool.query('SELECT COUNT(*) count FROM admin_users WHERE is_super_admin=1 AND is_active=1 AND id<>?',[id]);if(Number(count)<1)return json(res,409,{error:'Er moet minimaal één actieve hoofdbeheerder blijven.'});}
   const connection=await pool.getConnection();
-  try{await connection.beginTransaction();let passwordSql='';const params=[username,displayName,isSuper,isActive];const password=clean(data.password,200);if(password){if(password.length<12){await connection.rollback();return json(res,422,{error:'Het wachtwoord moet minimaal 12 tekens hebben.'});}const {salt,hash}=await passwordDigest(password);passwordSql=',password_hash=?,password_salt=?';params.push(hash,salt);}params.push(id);await connection.query(`UPDATE admin_users SET username=?,display_name=?,is_super_admin=?,is_active=?${passwordSql} WHERE id=?`,params);if(isSuper)await connection.query('DELETE FROM admin_user_resources WHERE user_id=?',[id]);else await saveAdminPermissions(connection,id,data.permissions);if(!isActive)await connection.query('DELETE FROM admin_sessions WHERE user_id=?',[id]);await connection.commit();const user=(await pool.query('SELECT * FROM admin_users WHERE id=?',[id]))[0];user.permissions=isSuper?[]:await pool.query('SELECT resource_id,can_view,can_create,can_edit,can_delete FROM admin_user_resources WHERE user_id=?',[id]);json(res,200,{user:serializeAdminUser(user)});}catch(error){await connection.rollback();if(error.code==='ER_DUP_ENTRY')return json(res,409,{error:'Deze gebruikersnaam bestaat al.'});throw error;}finally{connection.release();}
+  try{await connection.beginTransaction();let passwordSql='';const params=[username,displayName,isSuper,canManageMemberships,isActive];const password=clean(data.password,200);if(password){if(password.length<12){await connection.rollback();return json(res,422,{error:'Het wachtwoord moet minimaal 12 tekens hebben.'});}const {salt,hash}=await passwordDigest(password);passwordSql=',password_hash=?,password_salt=?';params.push(hash,salt);}params.push(id);await connection.query(`UPDATE admin_users SET username=?,display_name=?,is_super_admin=?,can_manage_memberships=?,is_active=?${passwordSql} WHERE id=?`,params);if(isSuper)await connection.query('DELETE FROM admin_user_resources WHERE user_id=?',[id]);else await saveAdminPermissions(connection,id,data.permissions);if(!isActive)await connection.query('DELETE FROM admin_sessions WHERE user_id=?',[id]);await connection.commit();const user=(await pool.query('SELECT * FROM admin_users WHERE id=?',[id]))[0];user.permissions=isSuper?[]:await pool.query('SELECT resource_id,can_view,can_create,can_edit,can_delete FROM admin_user_resources WHERE user_id=?',[id]);json(res,200,{user:serializeAdminUser(user)});}catch(error){await connection.rollback();if(error.code==='ER_DUP_ENTRY')return json(res,409,{error:'Deze gebruikersnaam bestaat al.'});throw error;}finally{connection.release();}
 }
 
 function adminEventData(data) {
@@ -314,6 +315,30 @@ async function importMunicipalEvent(req,res,admin) {
   if(!can(admin,eventCalendarResourceId,'create'))return json(res,403,{error:'Je mag geen externe evenementen toevoegen.'});const data=await body(req),events=await fetchMunicipalEvents(),item=events.find(event=>event.external_id===clean(data.external_id,80));if(!item)return json(res,404,{error:'Het evenement staat niet meer in de gemeentelijke bron.'});try{const id=uuid();await pool.query(`INSERT INTO calendar_events(id,resource_id,source,external_id,title,public_description,location,starts_at,ends_at,last_synced_at) VALUES (?,?,'municipality',?,?,?,?,?,?,NOW(3))`,[id,eventCalendarResourceId,item.external_id,item.title,`Overgenomen uit de evenementenkalender van gemeente De Fryske Marren.`,item.location,sqlDate(item.starts_at),sqlDate(item.ends_at)]);await pool.query(`INSERT INTO audit_log(actor_type,actor_id,action,metadata) VALUES ('system',?,'event.municipality_imported',?)`,[admin.username,JSON.stringify({event_id:id,external_id:item.external_id})]);json(res,201,{ok:true,event_id:id});}catch(error){if(error.code==='ER_DUP_ENTRY')return json(res,409,{error:'Dit evenement is al toegevoegd.'});throw error;}
 }
 
+const membershipAssociations = new Set(['IJsclub Eensgezindheid','Dorpsbelang','Oranjevereniging']);
+function validIban(value) {
+  const iban=String(value||'').replace(/\s+/g,'').toUpperCase();if(!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(iban))return false;const rearranged=iban.slice(4)+iban.slice(0,4),digits=[...rearranged].map(char=>/[A-Z]/.test(char)?String(char.charCodeAt(0)-55):char).join('');let remainder=0;for(const digit of digits)remainder=(remainder*10+Number(digit))%97;return remainder===1;
+}
+function encryptMembershipValue(value) {
+  if(config.membershipEncryptionKey.length<32)throw new Error('membership_encryption_unconfigured');const key=Buffer.from(sha256(config.membershipEncryptionKey),'hex'),iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv),encrypted=Buffer.concat([cipher.update(value,'utf8'),cipher.final()]);return`${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+function decryptMembershipValue(value) {
+  if(config.membershipEncryptionKey.length<32)throw new Error('membership_encryption_unconfigured');const [iv,tag,encrypted]=String(value).split('.'),decipher=createDecipheriv('aes-256-gcm',Buffer.from(sha256(config.membershipEncryptionKey),'hex'),Buffer.from(iv,'base64url'));decipher.setAuthTag(Buffer.from(tag,'base64url'));return Buffer.concat([decipher.update(Buffer.from(encrypted,'base64url')),decipher.final()]).toString('utf8');
+}
+function canManageMemberships(admin){return Boolean(admin.is_super_admin||admin.can_manage_memberships);}
+async function createMembershipRequest(req,res) {
+  if(limited(req))return json(res,429,{error:'Te veel aanvragen. Probeer het later opnieuw.'});const data=await body(req);if(clean(data.website,200))return json(res,201,{ok:true,reference:`LID-${randomBytes(4).toString('hex').toUpperCase()}`});
+  const firstName=clean(data.first_name,100),lastName=clean(data.last_name,160),street=clean(data.street,180),houseNumber=clean(data.house_number,30),email=clean(data.email,254).toLowerCase(),iban=String(data.iban||'').replace(/\s+/g,'').toUpperCase(),accountName=clean(data.account_name,180),note=clean(data.note,2000),associations=Array.isArray(data.associations)?[...new Set(data.associations.map(item=>clean(item,80)).filter(item=>membershipAssociations.has(item)))]:[];
+  if(!firstName||!lastName||!street||!houseNumber||!validEmail(email)||!validIban(iban)||!accountName||!associations.length||data.sepa_accepted!==true)return json(res,422,{error:'Controleer je gegevens, kies minimaal één vereniging en geef toestemming voor de SEPA-incasso.'});
+  const id=uuid(),reference=`LID-${randomBytes(4).toString('hex').toUpperCase()}`;await pool.query(`INSERT INTO membership_requests(id,reference,first_name,last_name,street,house_number,email,associations,iban_encrypted,iban_last4,account_name,note,sepa_accepted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW(3))`,[id,reference,firstName,lastName,street,houseNumber,email,JSON.stringify(associations),encryptMembershipValue(iban),iban.slice(-4),accountName,note||null]);await pool.query(`INSERT INTO audit_log(actor_type,actor_id,action,metadata) VALUES ('visitor',?,'membership.requested',?)`,[sha256(email),JSON.stringify({membership_request_id:id,reference,associations})]);json(res,201,{ok:true,reference});
+}
+async function adminMemberships(admin,res) {
+  if(!canManageMemberships(admin))return json(res,403,{error:'Je mag lidmaatschapsaanvragen niet bekijken.'});const rows=await pool.query('SELECT id,reference,first_name,last_name,street,house_number,email,associations,iban_encrypted,iban_last4,account_name,note,sepa_accepted_at,status,created_at FROM membership_requests ORDER BY FIELD(status,\'pending\',\'processed\',\'rejected\'),created_at DESC');json(res,200,{memberships:rows.map(row=>({...row,associations:typeof row.associations==='string'?JSON.parse(row.associations):row.associations,iban:decryptMembershipValue(row.iban_encrypted),iban_encrypted:undefined,sepa_accepted_at:isoDate(row.sepa_accepted_at),created_at:isoDate(row.created_at)}))});
+}
+async function updateMembershipStatus(req,res,admin,id) {
+  if(!canManageMemberships(admin))return json(res,403,{error:'Je mag lidmaatschapsaanvragen niet verwerken.'});const data=await body(req),status=clean(data.status,20);if(!['processed','rejected'].includes(status))return json(res,422,{error:'Ongeldige status.'});const result=await pool.query(`UPDATE membership_requests SET status=?,handled_by=?,handled_at=NOW(3) WHERE id=? AND status='pending'`,[status,admin.id,id]);if(!result.affectedRows)return json(res,409,{error:'Deze aanvraag is al verwerkt of bestaat niet.'});await pool.query(`INSERT INTO audit_log(actor_type,actor_id,action,metadata) VALUES ('system',?,'membership.reviewed',?)`,[admin.username,JSON.stringify({membership_request_id:id,status})]);json(res,200,{ok:true});
+}
+
 async function agenda(url, res) {
   const from = url.searchParams.get('from') || new Date().toISOString();
   const untilDefault = new Date(Date.now() + 120 * 86400000).toISOString();
@@ -473,6 +498,9 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'GET' && url.pathname === '/api/v1/admin/event-requests') return adminEventRequests(admin, res);
       if (req.method === 'GET' && url.pathname === '/api/v1/admin/municipal-events') return municipalEvents(admin,res);
       if (req.method === 'POST' && url.pathname === '/api/v1/admin/municipal-events/import') return importMunicipalEvent(req,res,admin);
+      if (req.method === 'GET' && url.pathname === '/api/v1/admin/memberships') return adminMemberships(admin,res);
+      const membershipMatch = /^\/api\/v1\/admin\/memberships\/([0-9a-f-]{36})$/.exec(url.pathname);
+      if (membershipMatch && req.method === 'PUT') return updateMembershipStatus(req,res,admin,membershipMatch[1]);
       const requestMatch = /^\/api\/v1\/admin\/event-requests\/([0-9a-f-]{36})\/(approve|reject)$/.exec(url.pathname);
       if (requestMatch && req.method === 'POST') return reviewEventRequest(admin,res,requestMatch[1],requestMatch[2]==='approve');
       const eventMatch = /^\/api\/v1\/admin\/events\/([0-9a-f-]{36})$/.exec(url.pathname);
@@ -493,6 +521,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/v1/calendar.ics') return eventCalendar(res);
     if (req.method === 'GET' && url.pathname === '/api/v1/availability') return availability(url, res);
     if (req.method === 'POST' && url.pathname === '/api/v1/event-requests') return createEventRequest(req, res);
+    if (req.method === 'POST' && url.pathname === '/api/v1/memberships') return createMembershipRequest(req,res);
     if (req.method === 'POST' && url.pathname === '/api/v1/reservations') return createReservation(req, res);
     if (req.method === 'POST' && url.pathname === '/webhooks/telegram') return telegramWebhook(req, res);
     if (req.method === 'POST' && url.pathname === '/webhooks/microsoft-graph') return graphWebhook(req, res, url);
@@ -505,7 +534,8 @@ const server = http.createServer(async (req, res) => {
       invalid_logo_url: [422, 'Gebruik voor het logo een geldige HTTPS-URL of een lokaal pad.'],
       resource_not_found: [404, 'Ruimte niet gevonden.'],
       event_conflict: [409, 'Deze ruimte is in de gekozen periode al bezet.'],
-      municipal_source_unavailable: [502, 'De evenementenkalender van De Fryske Marren is tijdelijk niet bereikbaar.']
+      municipal_source_unavailable: [502, 'De evenementenkalender van De Fryske Marren is tijdelijk niet bereikbaar.'],
+      membership_encryption_unconfigured: [503, 'Lid worden is nog niet geconfigureerd. Probeer het later opnieuw.']
     };
     const [status, message] = known[error.message] || [500, 'Er ging iets mis. Probeer het later opnieuw.'];
     json(res, status, { error: message });

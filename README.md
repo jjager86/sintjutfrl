@@ -38,6 +38,10 @@ De mobielvriendelijke beheerpagina staat op `/admin/`, op staging dus op `https:
 
 Een hoofdbeheerder kan meerdere gebruikers aanmaken en per dorpsruimte afzonderlijk rechten geven voor bekijken, toevoegen, wijzigen en verwijderen. Gewone beheerders zien uitsluitend de toegewezen ruimtes. Inlogsessies worden alleen in `sessionStorage` van de browser bewaard en verlopen na twaalf uur. Afspraken uit Microsoft 365 blijven in Outlook beheerd. Goedgekeurde reserveringen blijven via de bestaande Telegram- en reserveringsstroom lopen. Alle beveiligde admin-API-routes staan onder `/api/v1/admin/` en vereisen een geldige persoonlijke sessie.
 
+## Lidmaatschappen
+
+De pagina `/lid-worden/` bevat een volledig aanmeldformulier voor Dorpsbelang, Oranjevereniging en IJsclub Eensgezindheid. Stel vóór gebruik in Coolify een aparte `MEMBERSHIP_ENCRYPTION_KEY` van minimaal 32 willekeurige tekens in. Deze sleutel versleutelt IBAN-gegevens met AES-256-GCM en mag na ingebruikname niet worden gewijzigd, omdat bestaande aanvragen anders niet meer kunnen worden ontsleuteld. Hoofdbeheerders kunnen aanvragen in `/admin/` verwerken. Een hoofdbeheerder kan een ander account uitsluitend voor deze taak autoriseren met **Lidmaatschappen beheren**.
+
 De openbare evenementenkalender staat op `/evenementenkalender/`. Inwoners kunnen daar een evenement ter beoordeling aanmelden. Beheerders met rechten op de virtuele ruimte **Evenementenkalender** zien deze aanvragen in het tabblad **Aanvragen** en kunnen ze goedkeuren of afwijzen. Vertrouwde organisatoren kunnen dezelfde ruimte toegewezen krijgen met rechten voor bekijken, toevoegen, wijzigen en eventueel verwijderen; zij publiceren dan rechtstreeks via de admin. Beheerders kunnen daarnaast een voorbeeldlijst ophalen van de officiële [evenementenkalender van De Fryske Marren](https://www.defryskemarren.nl/direct-regelen/vergunningen-toestemming/evenementenkalender/) en evenementen afzonderlijk importeren. De bron wordt vijftien minuten in het geheugen gecachet en reeds geïmporteerde items worden niet dubbel toegevoegd. De kalender is ook beschikbaar als iCalendar-feed op `/api/v1/calendar.ics`.
 
 ## Telegram instellen
